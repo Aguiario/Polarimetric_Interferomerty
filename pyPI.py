@@ -82,36 +82,16 @@ def Es_parameters(info_1, info_2, p=False):
     Esy = np.sqrt(info_1[0] - Esx**2 - Er_1[0]**2)
     Es_c = np.array([[Esx], [Esy]])  # Construct estimated field vector
 
-    # Compute squared norms of reference and estimated fields
-    norm_Er2_sq = np.linalg.norm(Er_2)**2
-    norm_Es_c_sq = np.linalg.norm(Es_c)**2
-    
-    # this inot working by coding but by handmade
-    # Check later
-    # Compute numerator and denominator for phase calculation
-    # numerator = (norm_Er2_sq + norm_Es_c_sq) * np.tan(info_2[2])[0]
-    # denominator = norm_Er2_sq + norm_Es_c_sq + 2 * np.abs(Er_2[0])[0] * np.abs(Es_c[0])[0] * np.abs(Er_2[1])[0] * np.abs(Es_c[1])[0]
-    # delta_phi_s = np.arctan2(numerator, denominator)
+    # Calculating the numerator and denominator to calculate delta phi
+    numerador = Es_c[1, 0] * Er_2[1, 0] - np.sqrt(-Er_2[0, 0]**2 * Es_c[0, 0]**2 * np.tan(info_2[2])**2 + Er_2[0, 0]**2 * Es_c[1, 0]**2 * np.tan(info_2[2])**2 + Er_2[1, 0]**2 * Es_c[1, 0]**2)
+    denominador = (Er_2[0, 0] * Es_c[0, 0] - Er_2[1, 0] * Es_c[1, 0]) * np.tan(info_2[2])
 
-    # Define symbolic variable for phase shift
-    phi_s = sp.Symbol('Delta_phi_s')
-
-    # Define symbolic matrices for field components
-    Es_c_sp = sp.Matrix([Esx[0], Esy[0]])  # Symbolic estimated field vector
-    Er_2_sp = sp.Matrix([Er_2[0,0], Er_2[1,0]])  # Symbolic reference vector
-
-    # Expression for phase shift calculation
-    expr = sp.atan2(-Er_2_sp[1] * Es_c_sp[1] * sp.sin(-phi_s), 
-                    Er_2_sp[0] * Es_c_sp[0] + Er_2_sp[1] * Es_c_sp[1] * sp.cos(-phi_s)) - info_2[2]
-
-    # Solve for Delta_phi_s
-    solution = sp.solve(expr, phi_s)
-    delta_phi_s = solution[0] if solution else "No symbolic solution found."
+    # Calculation of delta_phi_s
+    delta_phi_s = 2 * np.arctan(numerador / denominador)[0]
 
     # Convert Esx and Esy to scalar values
     Esx = Esx[0]
     Esy = Esy[0]
-    delta_phi_s = delta_phi_s[0] if isinstance(delta_phi_s, (list, tuple)) else delta_phi_s
 
     # Print results if required
     if p:
