@@ -122,8 +122,8 @@ def plot_alpha_variation(Eis, delta_chi):
     
     for alpha in alpha_values:
         sxx = (np.cos(alpha) ** 2 + np.exp(-1j * delta_chi) * np.sin(alpha) ** 2)
-        sxy = ((1 - np.exp(1j * delta_chi)) * np.cos(alpha) * np.sin(alpha)) 
-        syx = ((1 - np.exp(1j * delta_chi)) * np.cos(alpha) * np.sin(alpha)) 
+        sxy = ((1 - np.exp(-1j * delta_chi)) * np.cos(alpha) * np.sin(alpha)) 
+        syx = ((1 - np.exp(-1j * delta_chi)) * np.cos(alpha) * np.sin(alpha)) 
         syy = (np.sin(alpha) ** 2 + np.exp(-1j * delta_chi) * np.cos(alpha) ** 2)
         
         S = np.array([[sxx, sxy], 
