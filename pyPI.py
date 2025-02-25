@@ -58,7 +58,7 @@ def I(E_r, E_s, mu=0, plot=False):
     
     return info, I
 
-def Es_parameters(info_1, info_2, p=False):
+def Es_parameters(Er_1, Er_2, info_1, info_2, p=False):
     """
     Computes the parameters Esx, Esy, and Delta_phi_s for a given electric field vector Es.
 
@@ -73,10 +73,6 @@ def Es_parameters(info_1, info_2, p=False):
         - Delta_phi_s: Phase shift between components.
     """
 
-    # Define reference fields
-    Er_1 = np.array([[1], [0]])  # Reference vector 1
-    Er_2 = np.array([[1], [1]])  # Reference vector 2
-
     # Calculate Esx and Esy
     Esx = info_1[1] / np.abs(Er_1[0])
     Esy = np.sqrt(info_1[0] - Esx**2 - Er_1[0]**2)
@@ -87,20 +83,47 @@ def Es_parameters(info_1, info_2, p=False):
     denominador = (Er_2[0, 0] * Es_c[0, 0] - Er_2[1, 0] * Es_c[1, 0]) * np.tan(info_2[2])
 
     # Calculation of delta_phi_s
-    delta_phi_s = 2 * np.arctan(numerador / denominador)[0]
+    delta_phi_s = 2 * np.arctan(numerador/ denominador)[0]
 
     # Convert Esx and Esy to scalar values
-    Esx = Esx[0]
-    Esy = Esy[0]
+    Esx = np.abs(Esx[0])
+    Esy = np.abs(Esy[0])
 
     # Print results if required
     if p:
         print("Calculated Parameters:")
         print(f"Esx: {Esx}")
         print(f"Esy: {Esy}")
-        print(f"Delta_phi_s: {delta_phi_s}")
+        print(f"Delta_phi_s: {delta_phi_s/np.pi}π")
     # Return computed values
     return Esx, Esy, delta_phi_s
+
+def jones_matrix(delta, alpha):
+    """
+    Computes the Jones matrix for a birefringent optical element.
+
+    Parameters:
+    delta : float
+        The phase retardation introduced by the birefringent material (in radians).
+    alpha : float
+        The angle (in radians) of the fast axis with respect to the reference axis.
+
+    Returns:
+    np.ndarray
+        A 2x2 complex-valued numpy array representing the Jones matrix.
+    """
+
+    # Compute the elements of the Jones matrix
+    m_11 = (np.cos(alpha) ** 2 + np.exp(-1j * delta) * np.sin(alpha) ** 2)  # First row, first column
+    m_12 = ((1 - np.exp(-1j * delta)) * np.cos(alpha) * np.sin(alpha))      # First row, second column
+    m_21 = ((1 - np.exp(-1j * delta)) * np.cos(alpha) * np.sin(alpha))      # Second row, first column
+    m_22 = (np.sin(alpha) ** 2 + np.exp(-1j * delta) * np.cos(alpha) ** 2)  # Second row, second column
+
+    # Construct the 2x2 Jones matrix
+    M = np.array([[m_11, m_12], 
+                  [m_21, m_22]])
+
+    return M  # Return the computed Jones matrix
 
 def plot_alpha_variation(Eis, delta_chi):
     """
@@ -121,13 +144,8 @@ def plot_alpha_variation(Eis, delta_chi):
     key_values = []
     
     for alpha in alpha_values:
-        sxx = (np.cos(alpha) ** 2 + np.exp(-1j * delta_chi) * np.sin(alpha) ** 2)
-        sxy = ((1 - np.exp(-1j * delta_chi)) * np.cos(alpha) * np.sin(alpha)) 
-        syx = ((1 - np.exp(-1j * delta_chi)) * np.cos(alpha) * np.sin(alpha)) 
-        syy = (np.sin(alpha) ** 2 + np.exp(-1j * delta_chi) * np.cos(alpha) ** 2)
-        
-        S = np.array([[sxx, sxy], 
-                      [syx, syy]])
+
+        S = jones_matrix(delta_chi, alpha)
         
         Es = S @ Eis
         delta_phi_s = np.angle(Es[1,0]) - np.angle(Es[0,0])
