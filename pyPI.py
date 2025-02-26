@@ -3,6 +3,24 @@ import matplotlib.pyplot as plt
 import cv2
 import sympy as sp
 
+
+def field_notation(E, p=False):
+    """
+    Converts electric field vector into field notation.
+    """
+    E_x = np.abs(E[0,0])
+    phi_x = np.angle(E[0,0])
+    E_y = np.abs(E[1,0])
+    phi_y = np.angle(E[1,0])
+    delta_phi = np.abs(phi_y - phi_x)
+
+    if p:
+        print(E_x)
+        print(E_y)
+        print(f"{delta_phi/np.pi}π")
+
+    return np.array([[E_x], [E_y * np.exp(1j*delta_phi)]])
+
 def I(E_r, E_s, mu=0, plot=False):
     """
     Computes the interference intensity pattern for given reference and sample electric field vectors.
@@ -29,7 +47,7 @@ def I(E_r, E_s, mu=0, plot=False):
     # Compute relative phase (vartheta)
     numerator = -np.abs(E_r[1]) * np.abs(E_s[1]) * np.sin(np.angle(E_r[1]) - np.angle(E_s[1]))
     denominator = np.abs(E_r[0]) * np.abs(E_s[0]) + np.abs(E_r[1]) * np.abs(E_s[1]) * np.cos(np.angle(E_r[1]) - np.angle(E_s[1]))
-    vartheta = np.arctan2(numerator, denominator)
+    vartheta = np.arctan(numerator/denominator)[0]
 
     # Phase modulation
     zeta = k * x - vartheta
@@ -83,20 +101,25 @@ def Es_parameters(Er_1, Er_2, info_1, info_2, p=False):
     denominador = (Er_2[0, 0] * Es_c[0, 0] - Er_2[1, 0] * Es_c[1, 0]) * np.tan(info_2[2])
 
     # Calculation of delta_phi_s
-    delta_phi_s = 2 * np.arctan(numerador/ denominador)[0]
+    if denominador == 0:
+        delta_phi_s = 0
+    else:
+        delta_phi_s = 2 * np.arctan(numerador / denominador)[0]
 
     # Convert Esx and Esy to scalar values
     Esx = np.abs(Esx[0])
     Esy = np.abs(Esy[0])
 
+    E = np.array([[Esx], [Esy * np.exp(1j*delta_phi_s)]])
+
     # Print results if required
     if p:
         print("Calculated Parameters:")
-        print(f"Esx: {Esx}")
-        print(f"Esy: {Esy}")
-        print(f"Delta_phi_s: {delta_phi_s/np.pi}π")
+        print(f"Esx: {np.abs(E[0,0])}")
+        print(f"Esy: {np.abs(E[1,0])}")
+        print(f"Delta_phi_s: {np.angle(E[1,0])/np.pi}π")
     # Return computed values
-    return Esx, Esy, delta_phi_s
+    return E
 
 def jones_matrix(delta, alpha):
     """
