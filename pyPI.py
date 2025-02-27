@@ -50,7 +50,7 @@ def I(E_r, E_s, mu=0, plot=False):
     vartheta = np.arctan(numerator/denominator)[0]
 
     # Phase modulation
-    zeta = k * x - vartheta
+    zeta = 2*(k * x - vartheta)
     cos_term = np.cos(mu + zeta)
     I = Omega + Psi * cos_term
     info = [Omega, Psi, vartheta]
