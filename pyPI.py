@@ -171,7 +171,7 @@ def plot_alpha_variation(Eis, delta_chi):
         S = jones_matrix(delta_chi, alpha)
         
         Es = S @ Eis
-        delta_phi_s = np.angle(Es[1,0]) - np.angle(Es[0,0])
+        delta_phi_s = np.abs(np.angle(Es[1,0]) - np.angle(Es[0,0]))
         
         Esx_values.append(np.abs(Es[0])[0])
         Esy_values.append(np.abs(Es[1])[0])
