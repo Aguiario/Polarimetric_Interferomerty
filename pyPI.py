@@ -120,7 +120,7 @@ def Es_parameters(Er_1, Er_2, info_1, info_2, p=False):
         print(f"Delta_phi_s: {np.angle(E[1,0])/np.pi}π")
     # Return computed values
     return E
-
+# Función para calcular la matriz de Jones
 def jones_matrix(delta, alpha):
     """
     Computes the Jones matrix for a birefringent optical element.
@@ -135,18 +135,12 @@ def jones_matrix(delta, alpha):
     np.ndarray
         A 2x2 complex-valued numpy array representing the Jones matrix.
     """
+    m_11 = (np.cos(alpha) ** 2 + np.exp(-1j * delta) * np.sin(alpha) ** 2)
+    m_12 = ((1 - np.exp(-1j * delta)) * np.cos(alpha) * np.sin(alpha))
+    m_21 = ((1 - np.exp(-1j * delta)) * np.cos(alpha) * np.sin(alpha))
+    m_22 = (np.sin(alpha) ** 2 + np.exp(-1j * delta) * np.cos(alpha) ** 2)
 
-    # Compute the elements of the Jones matrix
-    m_11 = (np.cos(alpha) ** 2 + np.exp(-1j * delta) * np.sin(alpha) ** 2)  # First row, first column
-    m_12 = ((1 - np.exp(-1j * delta)) * np.cos(alpha) * np.sin(alpha))      # First row, second column
-    m_21 = ((1 - np.exp(-1j * delta)) * np.cos(alpha) * np.sin(alpha))      # Second row, first column
-    m_22 = (np.sin(alpha) ** 2 + np.exp(-1j * delta) * np.cos(alpha) ** 2)  # Second row, second column
-
-    # Construct the 2x2 Jones matrix
-    M = np.array([[m_11, m_12], 
-                  [m_21, m_22]])
-
-    return M  # Return the computed Jones matrix
+    return np.array([[m_11, m_12], [m_21, m_22]], dtype=np.complex128)
 
 def plot_alpha_variation(Eis, delta_chi):
     """
