@@ -42,7 +42,7 @@ def I(E_r, E_s, mu=0, plot=False):
 
     # Compute intensity components
     Omega = np.linalg.norm(E_r)**2 + np.linalg.norm(E_s)**2
-    Psi = np.abs(np.dot(E_r.T, E_s))[0, 0]
+    Psi = np.abs(np.vdot(E_r, E_s))
 
     # Compute relative phase (vartheta)
     numerator = -np.abs(E_r[1]) * np.abs(E_s[1]) * np.sin(np.angle(E_r[1]) - np.angle(E_s[1]))
