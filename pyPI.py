@@ -269,12 +269,12 @@ def PSG_calculator(In, Out, p=False):
     result = minimize(objective, initial_guess, bounds=[(0, 2*np.pi), (0, 2*np.pi)])
 
     # Extract optimized angles and convert to units of π radians for better readability
-    alpha_1, alpha_2 = result.x / np.pi
+    alpha_1, alpha_2 = result.x 
 
     # Optionally print the calculated angles in terms of π for improved clarity
     if p:
-        print(f"HWP: alpha_1 = {alpha_1:.4f}π")
-        print(f"QWP: alpha_2 = {alpha_2:.4f}π")
+        print(f"HWP: alpha_1 = {alpha_1/ np.pi:.4f}π")
+        print(f"QWP: alpha_2 = {alpha_2/ np.pi:.4f}π")
     
     # Return the calculated angles in units of π
     return alpha_1, alpha_2
@@ -313,6 +313,7 @@ def field_notation(E, p=False):
     phi_y = np.round(np.angle(E[1, 0]), 5) # Phase of E_y
 
     # Compute the relative phase difference (delta_phi)
+    #delta_phi = np.round(phi_y - phi_x, 5)
     delta_phi = np.abs(np.round(phi_y - phi_x, 5))
 
     # If the x-component is zero, set delta_phi to zero (prevents undefined phase difference)
