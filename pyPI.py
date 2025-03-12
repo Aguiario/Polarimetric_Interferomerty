@@ -378,4 +378,161 @@ def polarization_basis_set(polarization):
     # Retornar el vector en notación de campo eléctrico
     return E
 
+import numpy as np
+import cv2
+import matplotlib.pyplot as plt
 
+def initialize_environment(lambda_=532e-9, x_size=1000, y_size=500):
+    """
+    Initializes the sample environment with defined dimensions and wavelength scaling.
+    
+    Parameters:
+    - lambda_ : float -> Wavelength of the light in meters (default: 532 nm).
+    - x_size : int -> Width of the sample grid.
+    - y_size : int -> Height of the sample grid.
+
+    Returns:
+    - sample : ndarray -> Array containing Jones matrices for each point.
+    - sample_image : ndarray -> Intensity map for visualization.
+    - X, Y : ndarray -> Coordinate grids for spatial mapping.
+    """
+    scale = lambda_ / np.array([x_size, y_size])  # Scaling factor based on wavelength
+    X, Y = np.meshgrid(np.arange(x_size) * scale[0], np.arange(y_size) * scale[1])
+    sample_image = np.zeros((y_size, x_size), dtype=np.uint8)  # Initial sample image (empty)
+    sample = np.full((y_size, x_size, 2, 2), np.eye(2, dtype=np.complex128), dtype=np.complex128)  # Jones matrix map
+    return sample, sample_image, X, Y
+
+def add_lines(positions, matrices, sample_image, sample, grosor=50):
+    """
+    Adds linear features with random intensity values to the sample environment.
+
+    Parameters:
+    - positions : list -> List of y-coordinates for the lines.
+    - matrices : list -> List of Jones matrices corresponding to each line.
+    - sample_image : ndarray -> Image array to display the sample.
+    - sample : ndarray -> Jones matrix array of the sample.
+    - grosor : int -> Thickness of the lines in pixels (default: 50).
+
+    Returns:
+    - sample : ndarray -> Updated sample with added lines.
+    """
+    intensity_values = np.random.randint(50, 256, size=len(positions))
+    for y_pos, intensity_value, line_matrix in zip(positions, intensity_values, matrices):
+        sample_image[y_pos:y_pos + grosor, :] = intensity_value
+        sample[y_pos:y_pos + grosor, :, :] = line_matrix
+
+    plt.imshow(sample_image, cmap='inferno')
+    plt.title('Physics representation of the sample')
+    plt.xlabel('X (m)')
+    plt.ylabel('Y (m)')
+    plt.show()
+
+    return sample
+
+def add_circles(positions, matrices, sample_image, sample, diameter_pixels=130):
+    """
+    Adds circular features with random intensity values to the sample environment.
+
+    Parameters:
+    - positions : list -> List of (x, y) coordinates for the circle centers.
+    - matrices : list -> List of Jones matrices corresponding to each circle.
+    - sample_image : ndarray -> Image array to display the sample.
+    - sample : ndarray -> Jones matrix array of the sample.
+    - diameter_pixels : int -> Diameter of the circles in pixels (default: 130).
+
+    Returns:
+    - sample : ndarray -> Updated sample with added circles.
+    """
+    intensity_values = np.random.randint(50, 256, size=len(positions))
+
+    for (center_x, center_y), intensity_value, circle_matrix in zip(positions, intensity_values, matrices):
+        y, x = np.ogrid[:sample_image.shape[0], :sample_image.shape[1]]
+        mask = (x - center_x)**2 + (y - center_y)**2 <= (diameter_pixels // 2) ** 2
+        sample_image[mask] = intensity_value
+        sample[mask, :, :] = circle_matrix
+
+    plt.imshow(sample_image, cmap='inferno')
+    plt.title('Physics representation of the sample')
+    plt.xlabel('X (m)')
+    plt.ylabel('Y (m)')
+    plt.show()
+
+    return sample
+
+def create_vector_matrix(E, shape):
+    """
+    Creates a 2D array filled with copies of the provided vector E.
+
+    Parameters:
+    - E : ndarray -> Input Jones vector.
+    - shape : tuple -> Shape of the resulting matrix.
+
+    Returns:
+    - E_map : ndarray -> Matrix filled with copies of the input vector.
+    """
+    E_map = np.empty(shape, dtype=object)
+    for i in range(shape[0]):
+        for j in range(shape[1]):
+            E_map[i, j] = E.copy()
+    return E_map
+
+def sample_intensity(Er, E_is, sample, X_meters, Y_meters, franjas=40, lambda_=532e-9):
+    """
+    Calculates the intensity of the interferogram using Jones matrices and field vectors.
+
+    Parameters:
+    - Er : ndarray -> Reference electric field Jones vector.
+    - E_is : ndarray -> Sample electric field Jones vector.
+    - sample : ndarray -> Jones matrix array of the sample.
+    - X_meters : ndarray -> X-coordinate grid in meters.
+    - Y_meters : ndarray -> Y-coordinate grid in meters.
+    - franjas : int -> Fringe density for phase modulation (default: 40).
+    - lambda_ : float -> Wavelength of the light in meters (default: 532 nm).
+
+    Returns:
+    - List containing:
+      - b : ndarray -> Background intensity term.
+      - m : ndarray -> Modulation amplitude term.
+      - theta : ndarray -> Phase modulation term.
+    """
+    k = 2 * np.pi / lambda_  # Wave number
+
+    E_is = create_vector_matrix(E_is, sample.shape[:2])
+    E_s = np.empty_like(E_is, dtype=object)
+    for i in range(sample.shape[0]):
+        for j in range(sample.shape[1]):
+            E_s[i, j] = sample[i, j] @ E_is[i, j]  # Applying Jones transformation
+
+    E_r = create_vector_matrix(Er, sample.shape[:2])
+
+    # Flatten Jones vectors for easier calculations
+    E_r = np.stack([[elem.flatten() for elem in row] for row in E_r])
+    E_s = np.stack([[elem.flatten() for elem in row] for row in E_s])
+
+    # Intensity calculation
+    b = np.sum(np.abs(E_r) ** 2, axis=-1) + np.sum(np.abs(E_s) ** 2, axis=-1)
+    m = np.abs(np.array([[np.vdot(E_r[i, j], E_s[i, j]) for j in range(E_r.shape[1])] 
+                          for i in range(E_r.shape[0])]))
+
+    numerator = -np.abs(E_r[:, :, 1]) * np.abs(E_s[:, :, 1]) * np.sin(np.angle(E_r[:, :, 1]) - np.angle(E_s[:, :, 1]))
+    denominator = np.abs(E_r[:, :, 0]) * np.abs(E_s[:, :, 0]) + np.abs(E_r[:, :, 1]) * np.abs(E_s[:, :, 1]) * np.cos(np.angle(E_r[:, :, 1]) - np.angle(E_s[:, :, 1]))
+    vartheta = np.arctan2(numerator, denominator)
+
+    n = franjas / 2
+    mu = 0  # Global phase shift
+    theta = n * (mu + k * (X_meters + Y_meters) - vartheta)
+    I = b + m * np.cos(theta)
+
+    I_norm = (I - I.min()) / (I.max() - I.min())
+    I_blurred = cv2.GaussianBlur(I_norm, (5, 5), 0)
+
+    plt.figure(figsize=(8, 6))
+    extent = [X_meters.min(), X_meters.max(), Y_meters.min(), Y_meters.max()]
+    plt.imshow(I_blurred, cmap='gray', aspect='auto', extent=extent)
+    plt.xlabel("X (m)")
+    plt.ylabel("Y (m)")
+    plt.title("Interferogram")
+    plt.colorbar(label="Intensity")
+    plt.show()
+
+    return [b, m, theta]
