@@ -136,8 +136,7 @@ def jones_matrix(delta, alpha):
         A 2x2 complex-valued numpy array representing the Jones matrix.
     """
     m_11 = (np.cos(alpha) ** 2 + np.exp(-1j * delta) * np.sin(alpha) ** 2)
-    m_12 = ((1 - np.exp(-1j * delta)) * np.cos(alpha) * np.sin(alpha))
-    m_21 = ((1 - np.exp(-1j * delta)) * np.cos(alpha) * np.sin(alpha))
+    m_12 = m_21 = ((1 - np.exp(-1j * delta)) * np.cos(alpha) * np.sin(alpha))
     m_22 = (np.sin(alpha) ** 2 + np.exp(-1j * delta) * np.cos(alpha) ** 2)
 
     return np.array([[m_11, m_12], [m_21, m_22]], dtype=np.complex128)
