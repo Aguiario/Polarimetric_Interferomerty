@@ -416,7 +416,7 @@ def add_lines(positions, matrices, sample_image, sample, grosor=50):
     Returns:
     - sample : ndarray -> Updated sample with added lines.
     """
-    intensity_values = np.random.randint(50, 256, size=len(positions))
+    intensity_values = np.linspace(50, 255, len(positions)).astype(int)
     for y_pos, intensity_value, line_matrix in zip(positions, intensity_values, matrices):
         sample_image[y_pos:y_pos + grosor, :] = intensity_value
         sample[y_pos:y_pos + grosor, :, :] = line_matrix
@@ -443,7 +443,7 @@ def add_circles(positions, matrices, sample_image, sample, diameter_pixels=130):
     Returns:
     - sample : ndarray -> Updated sample with added circles.
     """
-    intensity_values = np.random.randint(50, 256, size=len(positions))
+    intensity_values = np.linspace(50, 255, len(positions)).astype(int)
 
     for (center_x, center_y), intensity_value, circle_matrix in zip(positions, intensity_values, matrices):
         y, x = np.ogrid[:sample_image.shape[0], :sample_image.shape[1]]
@@ -520,7 +520,8 @@ def sample_intensity(Er, E_is, sample, X_meters, Y_meters, franjas=40, lambda_=5
 
     n = franjas / 2
     mu = 0  # Global phase shift
-    theta = n * (mu + k * (X_meters + Y_meters) - vartheta)
+    #theta = n * (mu + k * (X_meters + Y_meters) - vartheta)
+    theta = n * (mu + k * (X_meters) - vartheta)
     I = b + m * np.cos(theta)
 
     I_norm = (I - I.min()) / (I.max() - I.min())
