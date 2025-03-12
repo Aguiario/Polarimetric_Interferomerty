@@ -1,235 +1,334 @@
-import numpy as np
+import sympy as sp
 import matplotlib.pyplot as plt
 import cv2
-import sympy as sp
+import numpy as np
+from scipy.optimize import minimize
 
 
-def field_notation(E, p=False):
+def symbolic_intensity(values=None):
     """
-    Converts electric field vector into field notation.
-    """
-    E_x = np.abs(E[0,0])
-    phi_x = np.angle(E[0,0])
-    E_y = np.abs(E[1,0])
-    phi_y = np.angle(E[1,0])
-    delta_phi = np.abs(phi_y - phi_x)
-
-    if p:
-        print(E_x)
-        print(E_y)
-        print(f"{delta_phi/np.pi}π")
-
-    return np.array([[E_x], [E_y * np.exp(1j*delta_phi)]])
-
-def I(E_r, E_s, mu=0, plot=False):
-    """
-    Computes the interference intensity pattern for given reference and sample electric field vectors.
+    Calculates the intensity pattern resulting from the interaction of polarized light
+    with a birefringent material, modeled using Jones matrices and phase modulation.
 
     Parameters:
-    E_r (numpy array): Reference electric field vector (2x1 complex array).
-    E_s (numpy array): Sample electric field vector (2x1 complex array).
-    mu (float, optional): Global phase shift (default=0).
-    plot (bool, optional): If True, displays the interference pattern (default=False).
+    -----------
+    values : dict, optional
+        A dictionary containing specific numerical values for the symbolic variables.
+        If provided, the resulting intensity will be evaluated numerically.
 
     Returns:
-    tuple: (info, I) where:
-        - info: List containing Omega, Psi, and vartheta parameters.
-        - I: Computed intensity array.
+    --------
+    I : sympy expression or numerical value
+        The calculated intensity as a symbolic expression or evaluated result
+        if `values` is provided.
     """
-    lambda_ = 532e-9  # Wavelength in meters
-    k = 2 * np.pi / lambda_  # Wave number
-    x = np.linspace(-k, k, 500)  # Spatial positions along x-axis
 
-    # Compute intensity components
-    Omega = np.linalg.norm(E_r)**2 + np.linalg.norm(E_s)**2
-    Psi = np.abs(np.vdot(E_r, E_s))
+    # Define symbolic variables for phase angles, spatial modulation, and amplitudes
+    alpha, chi, mu, k, x, phi_is, phi_r = sp.symbols('alpha chi mu k x phi_is phi_r', real=True)
+    A_isx, A_isy, A_rx, A_ry = sp.symbols('A_isx A_isy A_rx A_ry', real=True)
 
-    # Compute relative phase (vartheta)
-    numerator = -np.abs(E_r[1]) * np.abs(E_s[1]) * np.sin(np.angle(E_r[1]) - np.angle(E_s[1]))
-    denominator = np.abs(E_r[0]) * np.abs(E_s[0]) + np.abs(E_r[1]) * np.abs(E_s[1]) * np.cos(np.angle(E_r[1]) - np.angle(E_s[1]))
-    vartheta = np.arctan(numerator/denominator)[0]
+    # Define the reference electric field vector A_r
+    E_r = sp.Matrix([[A_rx], [A_ry * sp.exp(1j * phi_r)]])
 
-    # Phase modulation
-    zeta = 2*(k * x - vartheta)
-    cos_term = np.cos(mu + zeta)
-    I = Omega + Psi * cos_term
-    info = [Omega, Psi, vartheta]
+    # Waveplate (birefringent) matrix coefficients (Jones formalism)
+    S_xx = sp.cos(alpha)**2 + sp.exp(-1j * chi) * sp.sin(alpha)**2
+    S_xy = (1 - sp.exp(-1j * chi)) * sp.cos(alpha) * sp.sin(alpha)
+    S_yx = S_xy
+    S_yy = sp.sin(alpha)**2 + sp.exp(-1j * chi) * sp.cos(alpha)**2
 
-    # Normalize intensity to scale between 0 and 255 (grayscale image)
-    I_norm = ((I - I.min()) / (I.max() - I.min()) * 255).astype(np.uint8)
+    # Transformation of the input electric field vector E_is through the waveplate
+    E_sx = S_xx * A_isx + S_xy * A_isy * sp.exp(1j * phi_is)
+    E_sy = S_yx * A_isx + S_yy * A_isy * sp.exp(1j * phi_is)
+    E_s = sp.Matrix([[E_sx], [E_sy]])
 
-    # Create grayscale interference pattern image
-    height = 500  # Image height in pixels
-    pattern_image = np.tile(I_norm, (height, 1))
-
-    # Apply Gaussian blur to smooth fringes
-    pattern_image = cv2.GaussianBlur(pattern_image, (5, 5), 0)
+    # Intensity calculation components
+    # Background 'b' is the sum of the squared norms (amplitudes) of the reference and sample vectors
+    b = E_r.norm()**2 + E_s.norm()**2
     
+    # Modulation 'm' is the magnitude of the dot product between the reference and transformed sample vectors
+    m = sp.Abs(E_r.dot(E_s))
+
+    # Calculation of the relative phase shift (vartheta)
+    numerator = -sp.Abs(E_r[1, 0]) * sp.Abs(E_s[1]) * sp.sin(sp.arg(E_r[1, 0]) - sp.arg(E_s[1]))
+    denominator = sp.Abs(E_r[0, 0]) * sp.Abs(E_s[0]) + sp.Abs(E_r[1, 0]) * sp.Abs(E_s[1]) * sp.cos(sp.arg(E_r[1, 0]) - sp.arg(E_s[1]))
+    vartheta = sp.atan(numerator / denominator)
+
+    # Phase modulation incorporating spatial modulation (kx) and global phase shift (mu)
+    theta = (mu + k * x - vartheta)
+    cos_term = sp.cos(theta)
+
+    # Final intensity expression combining all calculated terms
+    I = b + m * cos_term
+
+    # Substitute numerical values if provided
+    if values:
+        I = I.subs(values).evalf()
+
+    return I
+
+def numeric_intensity(E_r, E_s, mu=0, n=1, plot=False):
+    """
+    Computes the numerical intensity distribution for an interferogram 
+    generated by two electric field vectors E_r and E_s.
+
+    Parameters:
+    - E_r, E_s: Complex-valued electric field vectors.
+    - mu: Phase offset (default is 0).
+    - n: Number of phase steps or modulation factor (default is 1).
+    - plot: Boolean to indicate if the resulting interferogram should be plotted (default is False).
+
+    Returns:
+    - info: List containing [b, m, vartheta, theta, cos_term]
+      - b: Baseline intensity
+      - m: Modulated intensity amplitude
+      - vartheta: Relative phase shift between the fields
+      - theta: Phase modulation term
+      - cos_term: Cosine modulation term
+    """
+
+    # Wavelength of the light source (in meters)
+    lambda_ = 532e-9  
+
+    # Wave number (k = 2π/λ)
+    k = 2 * np.pi / lambda_  
+
+    # Image resolution (pixel dimensions)
+    x_size = 1000  # Number of pixels in the x-axis
+    y_size = 500   # Number of pixels in the y-axis
+
+    # Conversion scales from pixels to meters
+    x_scale = lambda_ / x_size  # Pixel size in meters along x-axis
+    y_scale = lambda_ / y_size  # Pixel size in meters along y-axis
+
+    # Create physical coordinate grids
+    x_pixels = np.arange(x_size)  # X pixel indices
+    y_pixels = np.arange(y_size)  # Y pixel indices
+    X, Y = np.meshgrid(x_pixels, y_pixels)  # 2D coordinate grid
+    X_meters = X * x_scale  # X coordinates in meters
+    Y_meters = Y * y_scale  # Y coordinates in meters
+
+    # Generate combined spatial coordinate for phase modulation
+    x = X_meters + Y_meters
+
+    # Intensity component calculations
+    b = np.linalg.norm(E_r)**2 + np.linalg.norm(E_s)**2  # Baseline intensity
+    m = np.abs(np.vdot(E_r, E_s))  # Modulated intensity amplitude
+
+    # Compute the relative phase (vartheta)
+    numerator = -np.abs(E_r[1]) * np.abs(E_s[1]) * np.sin(np.angle(E_r[1]) - np.angle(E_s[1]))
+    denominator = (np.abs(E_r[0]) * np.abs(E_s[0]) +
+                   np.abs(E_r[1]) * np.abs(E_s[1]) * np.cos(np.angle(E_r[1]) - np.angle(E_s[1])))
+    vartheta = np.arctan(numerator / denominator)[0]
+
+    # Phase modulation term
+    theta = (n / 2) * (mu + k * x - vartheta)
+
+    # Cosine term for interference pattern
+    cos_term = np.cos(theta)
+
+    # Final intensity calculation
+    I = b + m * cos_term
+
+    # Information array for reference
+    info = [b, m, vartheta, theta, cos_term]
+
+    # Optional plotting of the interferogram
     if plot:
+        # Normalize the intensity to a range between 0 and 1
+        I_norm = (I - I.min()) / (I.max() - I.min())
+
+        # Apply Gaussian blur to smooth the fringe pattern
+        I_blurred = cv2.GaussianBlur(I_norm, (5, 5), 0)
+
         # Display the interferogram
         plt.figure(figsize=(8, 6))
-        plt.imshow(pattern_image, cmap='gray', aspect='auto', extent=[x.min(), x.max(), 0, height])
-        plt.xlabel("x")
-        plt.ylabel("Intensity")
+        extent = [X_meters.min(), X_meters.max(), Y_meters.min(), Y_meters.max()]
+        plt.imshow(I_blurred, cmap='gray', aspect='auto', extent=extent)
+        plt.xlabel("X (m)")
+        plt.ylabel("Y (m)")
         plt.title("Interferogram")
+        plt.colorbar(label="Intensity")
         plt.show()
-    
-    return info, I
 
-def Es_parameters(Er_1, Er_2, info_1, info_2, p=False):
-    """
-    Computes the parameters Esx, Esy, and Delta_phi_s for a given electric field vector Es.
+    return info
 
-    Parameters:
-    Es (numpy array): 2x1 complex electric field vector.
-    p (bool, optional): If True, prints the calculated parameters. Default is False.
-
-    Returns:
-    tuple: (Esx, Esy, Delta_phi_s) where:
-        - Esx: x-component of the estimated electric field.
-        - Esy: y-component of the estimated electric field.
-        - Delta_phi_s: Phase shift between components.
-    """
-
-    # Calculate Esx and Esy
-    Esx = info_1[1] / np.abs(Er_1[0])
-    Esy = np.sqrt(info_1[0] - Esx**2 - Er_1[0]**2)
-    Es_c = np.array([[Esx], [Esy]])  # Construct estimated field vector
-
-    # Calculating the numerator and denominator to calculate delta phi
-    numerador = Es_c[1, 0] * Er_2[1, 0] - np.sqrt(-Er_2[0, 0]**2 * Es_c[0, 0]**2 * np.tan(info_2[2])**2 + Er_2[0, 0]**2 * Es_c[1, 0]**2 * np.tan(info_2[2])**2 + Er_2[1, 0]**2 * Es_c[1, 0]**2)
-    denominador = (Er_2[0, 0] * Es_c[0, 0] - Er_2[1, 0] * Es_c[1, 0]) * np.tan(info_2[2])
-
-    # Calculation of delta_phi_s
-    if denominador == 0:
-        delta_phi_s = 0
-    else:
-        delta_phi_s = 2 * np.arctan(numerador / denominador)[0]
-
-    # Convert Esx and Esy to scalar values
-    Esx = np.abs(Esx[0])
-    Esy = np.abs(Esy[0])
-
-    E = np.array([[Esx], [Esy * np.exp(1j*delta_phi_s)]])
-
-    # Print results if required
-    if p:
-        print("Calculated Parameters:")
-        print(f"Esx: {np.abs(E[0,0])}")
-        print(f"Esy: {np.abs(E[1,0])}")
-        print(f"Delta_phi_s: {np.angle(E[1,0])/np.pi}π")
-    # Return computed values
-    return E
-# Función para calcular la matriz de Jones
 def jones_matrix(delta, alpha):
     """
     Computes the Jones matrix for a birefringent optical element.
 
     Parameters:
-    delta : float
+    - delta : float
         The phase retardation introduced by the birefringent material (in radians).
-    alpha : float
-        The angle (in radians) of the fast axis with respect to the reference axis.
+        This phase shift is the optical path difference between the fast and slow
+        axes of the birefringent material.
+    
+    - alpha : float
+        The orientation angle (in radians) of the fast axis with respect to the
+        reference axis (horizontal axis in the standard Jones formalism).
 
     Returns:
-    np.ndarray
+    - np.ndarray
         A 2x2 complex-valued numpy array representing the Jones matrix.
+        This matrix describes the effect of the birefringent element on the 
+        electric field's polarization state.
     """
-    m_11 = (np.cos(alpha) ** 2 + np.exp(-1j * delta) * np.sin(alpha) ** 2)
-    m_12 = m_21 = ((1 - np.exp(-1j * delta)) * np.cos(alpha) * np.sin(alpha))
-    m_22 = (np.sin(alpha) ** 2 + np.exp(-1j * delta) * np.cos(alpha) ** 2)
 
+    # Compute the individual elements of the Jones matrix
+    # Diagonal element [0,0] — Describes the effect on the horizontal polarization component
+    m_11 = np.cos(alpha) ** 2 + np.exp(-1j * delta) * np.sin(alpha) ** 2
+    
+    # Off-diagonal elements [0,1] and [1,0] — Represent the coupling between
+    # horizontal and vertical polarization components
+    m_12 = m_21 = (1 - np.exp(-1j * delta)) * np.cos(alpha) * np.sin(alpha)
+
+    # Diagonal element [1,1] — Describes the effect on the vertical polarization component
+    m_22 = np.sin(alpha) ** 2 + np.exp(-1j * delta) * np.cos(alpha) ** 2
+
+    # Return the Jones matrix as a 2x2 complex-valued numpy array
     return np.array([[m_11, m_12], [m_21, m_22]], dtype=np.complex128)
 
-def plot_alpha_variation(Eis, delta_chi):
+def PSG(alpha_1, alpha_2):
     """
-    Plots the variation of |Esx|, |Esy|, and Delta_phi_s as a function of alpha.
-    
+    Generates a Polarization State Generator (PSG) matrix using a Half-Wave Plate (HWP)
+    and a Quarter-Wave Plate (QWP).
+
     Parameters:
-    Eis : ndarray
-        Incident electric field vector.
-    delta_chi : float
-        Phase shift introduced by the birefringent material.
+    - alpha_1 : float
+        The orientation angle (in radians) of the fast axis of the Half-Wave Plate (HWP)
+        with respect to the reference axis.
+    
+    - alpha_2 : float
+        The orientation angle (in radians) of the fast axis of the Quarter-Wave Plate (QWP)
+        with respect to the reference axis.
+
+    Returns:
+    - np.ndarray
+        A 2x2 complex-valued numpy array representing the resulting PSG matrix,
+        which describes the combined effect of the QWP and HWP on the polarization state.
     """
-    alpha_values = np.linspace(0, 2 * np.pi, 100)
-    Esx_values = []
-    Esy_values = []
-    delta_phi_s_values = []
-    
-    key_alphas = [0, np.pi/2, np.pi, 3*np.pi/2, 2*np.pi]
-    key_values = []
-    
-    for alpha in alpha_values:
 
-        S = jones_matrix(delta_chi, alpha)
-        
-        Es = S @ Eis
-        delta_phi_s = np.abs(np.angle(Es[1,0]) - np.angle(Es[0,0]))
-        
-        Esx_values.append(np.abs(Es[0])[0])
-        Esy_values.append(np.abs(Es[1])[0])
-        delta_phi_s_values.append(delta_phi_s)
-        
-        if alpha in key_alphas:
-            key_values.append((alpha, np.abs(Es[0])[0], np.abs(Es[1])[0], delta_phi_s))
+    # Generate the Jones matrix for the Half-Wave Plate (HWP)
+    # A HWP introduces a π phase retardation (180°) between its fast and slow axes
+    HWP = jones_matrix(np.pi, alpha_1)
+
+    # Generate the Jones matrix for the Quarter-Wave Plate (QWP)
+    # A QWP introduces a π/2 phase retardation (90°) between its fast and slow axes
+    QWP = jones_matrix(np.pi / 2, alpha_2)
+
+    # Return the resulting matrix for the combined PSG system
+    # The QWP follows the HWP in the optical path, so the matrices are multiplied in this order
+    return QWP @ HWP
+
+import numpy as np
+from scipy.optimize import minimize
+
+def PSG_calculator(In, Out, p=False):
+    """
+    Calculates the optimal angles for a Half-Wave Plate (HWP) and a Quarter-Wave Plate (QWP) 
+    to achieve a desired output polarization state.
+
+    Parameters:
+    -----------
+    In : ndarray
+        Input Jones vector representing the initial polarization state.
+    Out : ndarray
+        Desired output Jones vector representing the target polarization state.
+    p : bool, optional
+        If True, prints the calculated angles in terms of π radians (default is False).
+
+    Returns:
+    --------
+    alpha_1 : float
+        Optimal angle for the Half-Wave Plate (HWP) in units of π radians.
+    alpha_2 : float
+        Optimal angle for the Quarter-Wave Plate (QWP) in units of π radians.
+    """
+
+    def objective(params):
+        """
+        Objective function to minimize the difference between the resulting 
+        polarization state and the desired output state.
+
+        Parameters:
+        -----------
+        params : list or tuple
+            Contains the two angles: alpha_1 (HWP) and alpha_2 (QWP) in radians.
+
+        Returns:
+        --------
+        float
+            Norm of the difference between the calculated and desired Jones vector.
+        """
+        alpha_1, alpha_2 = params  # Extract angles from input
+        PSG_matrix = PSG(alpha_1, alpha_2)  # Generate the PSG matrix using the given angles
+        result = PSG_matrix @ In  # Compute the resulting Jones vector
+        return np.linalg.norm(result - Out)  # Minimize the difference between result and target
+
+    # Initial guess for the angles (both set to 0 radians initially)
+    initial_guess = [0, 0]
+
+    # Minimize the objective function with bounds to keep angles within [0, 2π]
+    result = minimize(objective, initial_guess, bounds=[(0, 2*np.pi), (0, 2*np.pi)])
+
+    # Extract optimized angles and convert to units of π radians for better readability
+    alpha_1, alpha_2 = result.x / np.pi
+
+    # Optionally print the calculated angles in terms of π for improved clarity
+    if p:
+        print(f"HWP: alpha_1 = {alpha_1:.4f}π")
+        print(f"QWP: alpha_2 = {alpha_2:.4f}π")
     
-    # Líneas de referencia
-    def plot_reference_lines():
-        for alpha in key_alphas:
-            plt.axvline(x=alpha, color='gray', linestyle='--', alpha=0.6)
-    
-    # Gráfica de Esx
-    plt.figure()
-    plt.plot(alpha_values, Esx_values, label='|Esx|', color='b')
-    plot_reference_lines()
-    Esx_0 = key_values[0][1]  # Valor de Esx cuando alpha = 0
-    plt.axhline(y=Esx_0, color='b', linestyle='dotted')
-    for alpha, Esx, _, _ in key_values:
-        plt.scatter(alpha, Esx, color='b')
-    plt.xlabel('Alpha (n π)')
-    plt.xticks(key_alphas, ['0', 'π/2', 'π', '3π/2', '2π'])
-    plt.ylabel('|Esx|')
-    plt.title('Variación de Esx con Alpha')
-    plt.grid()
-    plt.legend()
-    plt.show()
-    
-    # Gráfica de Esy
-    plt.figure()
-    plt.plot(alpha_values, Esy_values, label='|Esy|', color='r')
-    plot_reference_lines()
-    Esy_0 = key_values[0][2]  # Valor de Esy cuando alpha = 0
-    plt.axhline(y=Esy_0, color='r', linestyle='dotted')
-    for alpha, _, Esy, _ in key_values:
-        plt.scatter(alpha, Esy, color='r')
-    plt.xlabel('Alpha (n π)')
-    plt.xticks(key_alphas, ['0', 'π/2', 'π', '3π/2', '2π'])
-    plt.ylabel('|Esy|')
-    plt.title('Variación de Esy con Alpha')
-    plt.grid()
-    plt.legend()
-    plt.show()
-    
-    # Gráfica de delta_phi_s
-    plt.figure()
-    plt.plot(alpha_values, delta_phi_s_values, label='Delta_phi_s', color='g')
-    plot_reference_lines()
-    delta_phi_0 = key_values[0][3]  # Valor de Delta_phi_s cuando alpha = 0
-    plt.axhline(y=delta_phi_0, color='g', linestyle='dotted')
-    for alpha, _, _, delta_phi_s in key_values:
-        plt.scatter(alpha, delta_phi_s, color='g')
-    plt.xlabel('Alpha (n π)')
-    plt.xticks(key_alphas, ['0', 'π/2', 'π', '3π/2', '2π'])
-    plt.ylabel('Delta_phi_s (rad)')
-    plt.title('Variación de Delta_phi_s con Alpha')
-    plt.grid()
-    plt.legend()
-    plt.show()
-    
-    # Crear tabla con valores clave
-    #df = pd.DataFrame(key_values, columns=['Alpha (rad)', '|Esx|', '|Esy|', 'Delta_phi_s'])
-    #print(df)
+    # Return the calculated angles in units of π
+    return alpha_1, alpha_2
 
 
+def field_notation(E, p=False):
+    """
+    Converts an electric field vector into field notation, extracting amplitude 
+    and phase information for both polarization components.
+
+    Parameters:
+    - E : np.ndarray
+        A 2x1 complex-valued array representing the electric field vector.
+        E[0, 0] corresponds to the x-polarization component.
+        E[1, 0] corresponds to the y-polarization component.
+
+    - p : bool, optional (default = False)
+        If True, prints the amplitude of both components and the relative phase
+        difference in terms of π.
+
+    Returns:
+    - np.ndarray
+        A 2x1 complex-valued array in field notation form:
+        [[E_x], [E_y * exp(i * delta_phi)]]
+        Where:
+        - E_x and E_y are the magnitudes (amplitudes) of the field components.
+        - delta_phi is the phase difference between the y and x components.
+    """
+
+    # Extract the amplitude (magnitude) and phase of the x-component
+    E_x = np.round(np.abs(E[0, 0]), 5)    # Magnitude of E_x
+    phi_x = np.round(np.angle(E[0, 0]), 5) # Phase of E_x
+
+    # Extract the amplitude (magnitude) and phase of the y-component
+    E_y = np.round(np.abs(E[1, 0]), 5)    # Magnitude of E_y
+    phi_y = np.round(np.angle(E[1, 0]), 5) # Phase of E_y
+
+    # Compute the relative phase difference (delta_phi)
+    delta_phi = np.round(phi_y - phi_x, 5)
+
+    # If the x-component is zero, set delta_phi to zero (prevents undefined phase difference)
+    if E_x == 0 or E_y == 0:
+        delta_phi = 0
+
+    # Print values if 'p' is True
+    if p:
+        print(E_x)                        # Prints x-component amplitude
+        print(E_y)                        # Prints y-component amplitude
+        print(f"{np.round(delta_phi / np.pi, 5)}π")    # Prints phase difference in terms of π
+        print()                           # Prints newline for readability
+
+    # Return the field notation in the desired format
+    return np.array([[E_x], [E_y * np.exp(1j * delta_phi)]])
 
 
