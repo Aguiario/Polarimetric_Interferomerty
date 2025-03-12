@@ -535,4 +535,4 @@ def sample_intensity(Er, E_is, sample, X_meters, Y_meters, franjas=40, lambda_=5
     plt.colorbar(label="Intensity")
     plt.show()
 
-    return [b, m, theta]
+    return I_norm
