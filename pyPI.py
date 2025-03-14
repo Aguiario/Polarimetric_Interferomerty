@@ -314,7 +314,7 @@ def field_notation(E, p=False):
 
     # Compute the relative phase difference (delta_phi)
     #delta_phi = np.round(phi_y - phi_x, 5)
-    delta_phi = np.abs(np.round(phi_y - phi_x, 5))
+    delta_phi = np.round(phi_y - phi_x, 5)
 
     # If the x-component is zero, set delta_phi to zero (prevents undefined phase difference)
     if E_x == 0 or E_y == 0:
@@ -471,6 +471,7 @@ def create_vector_matrix(E, shape):
     Returns:
     - E_map : ndarray -> Matrix filled with copies of the input vector.
     """
+    
     E_map = np.empty(shape, dtype=object)
     for i in range(shape[0]):
         for j in range(shape[1]):
@@ -499,12 +500,13 @@ def sample_intensity(Er, E_is, sample, X_meters, Y_meters, franjas=40, lambda_=5
     k = 2 * np.pi / lambda_  # Wave number
 
     E_is = create_vector_matrix(E_is, sample.shape[:2])
+    E_r = create_vector_matrix(Er, sample.shape[:2])
     E_s = np.empty_like(E_is, dtype=object)
     for i in range(sample.shape[0]):
         for j in range(sample.shape[1]):
             E_s[i, j] = sample[i, j] @ E_is[i, j]  # Applying Jones transformation
-
-    E_r = create_vector_matrix(Er, sample.shape[:2])
+    A = E_r
+    B= E_s
 
     # Flatten Jones vectors for easier calculations
     E_r = np.stack([[elem.flatten() for elem in row] for row in E_r])
@@ -512,6 +514,7 @@ def sample_intensity(Er, E_is, sample, X_meters, Y_meters, franjas=40, lambda_=5
 
     # Intensity calculation
     b = np.sum(np.abs(E_r) ** 2, axis=-1) + np.sum(np.abs(E_s) ** 2, axis=-1)
+    #m = np.abs(np.einsum('ijk,ijk->ij', E_r, np.conj(E_s)))
     m = np.abs(np.array([[np.vdot(E_r[i, j], E_s[i, j]) for j in range(E_r.shape[1])] 
                           for i in range(E_r.shape[0])]))
 
@@ -523,7 +526,9 @@ def sample_intensity(Er, E_is, sample, X_meters, Y_meters, franjas=40, lambda_=5
     mu = 0  # Global phase shift
     #theta = n * (mu + k * (X_meters + Y_meters) - vartheta)
     theta = n * (mu + k * (X_meters) - vartheta)
-    I = b + m * np.cos(theta)
+    cos_term = np.cos(theta)
+    I = b + m * cos_term
+    info = [b, m, vartheta, theta, cos_term]
 
     I_norm = (I - I.min()) / (I.max() - I.min())
     I_blurred = cv2.GaussianBlur(I_norm, (5, 5), 0)
@@ -537,4 +542,44 @@ def sample_intensity(Er, E_is, sample, X_meters, Y_meters, franjas=40, lambda_=5
     plt.colorbar(label="Intensity")
     plt.show()
 
-    return I_norm
+    return I,info, A, B
+
+from scipy.fft import fft, fftfreq
+from scipy.interpolate import interp1d
+
+def calcular_desfase(I1, I2, X):
+    # Centrado de las señales (restar la media)
+    I1_centered = I1 - np.mean(I1)
+    I2_centered = I2 - np.mean(I2)
+    
+    # Interpolación para mejorar la resolución
+    x_interpolated = np.linspace(X.min(), X.max(), 10 * len(X))
+    interp_I1 = interp1d(X, I1_centered, kind='cubic')
+    interp_I2 = interp1d(X, I2_centered, kind='cubic')
+
+    # Señales interpoladas
+    I1_interp = interp_I1(x_interpolated)
+    I2_interp = interp_I2(x_interpolated)
+
+    # FFT para cada señal interpolada
+    fft_I1 = fft(I1_interp)
+    fft_I2 = fft(I2_interp)
+
+    # Determinar la frecuencia dominante
+    frequencies = fftfreq(len(x_interpolated), x_interpolated[1] - x_interpolated[0])
+    dominant_freq_index = np.argmax(np.abs(fft_I1))
+
+    # Fases en la frecuencia dominante
+    phase_I1 = np.angle(fft_I1[dominant_freq_index])
+    phase_I2 = np.angle(fft_I2[dominant_freq_index])
+
+    # Desfase calculado (en radianes)
+    delta_phi = phase_I2 - phase_I1
+
+    # Conversión del desfase a distancia (en metros)
+    #wavelength = 1 / frequencies[dominant_freq_index]  # Longitud de onda
+    wavelength = 532e-9
+    delta_x = delta_phi / (2 * np.pi) * wavelength     # Desfase convertido a metros
+    
+    #return delta_x
+    return delta_phi
