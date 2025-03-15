@@ -646,3 +646,38 @@ def calculate_phase_shift(I1, I2, X):
     # Return the calculated phase shift (uncomment delta_x if distance is preferred)
     # return delta_x
     return delta_phi
+
+def birefringence_by_minimization(E_in, E_out):
+    """
+    Calculates the optimal birefringence parameters (delta_chi and alpha)
+    that minimize the difference between a known output electric field (E_out)
+    and a generated electric field using a Jones matrix transformation.
+
+    Args:
+        E_in (array): Input polarization state vector.
+        E_out (array): Desired output polarization state vector.
+
+    Returns:
+        tuple: Optimal delta_chi and alpha values in radians.
+    """
+    # Error function to minimize the difference between calculated and desired outputs
+    def error_function(params):
+        delta_chi, alpha = params  # Extract parameters
+        M = jones_matrix(delta_chi, alpha)  # Jones matrix with given parameters
+        result = M @ E_in  # Calculated polarization state
+        return np.linalg.norm(result - E_out)  # Norm of the difference as error metric
+
+    # Initial guess for the minimization process (delta_chi = 0, alpha = 0)
+    initial_guess = [0, 0]
+
+    # Perform the minimization using the Nelder-Mead method
+    result = minimize(error_function, initial_guess, method='Nelder-Mead')
+
+    # Extract optimal parameters
+    optimal_delta_chi, optimal_alpha = result.x
+
+    # Display results in terms of π for clarity
+    print(f"χ: {optimal_delta_chi/np.pi:.4f}π")
+    print(f"α: {optimal_alpha/np.pi:.4f}π")
+
+    return optimal_delta_chi, optimal_alpha
