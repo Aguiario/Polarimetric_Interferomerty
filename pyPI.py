@@ -2,7 +2,12 @@ import sympy as sp
 import matplotlib.pyplot as plt
 import cv2
 import numpy as np
+import numpy as np
 from scipy.optimize import minimize
+from scipy.fft import fft, fftfreq
+from scipy.interpolate import interp1d
+
+
 
 
 def symbolic_intensity(values=None):
@@ -150,39 +155,62 @@ def numeric_intensity(E_r, E_s, mu=0, x_size = 1000, y_size = 500, n=1, plot=Fal
 
     return info
 
+
 def Es_numeric_recosntruction(info_1, info_2):
-    # Variables proporcionadas
-    b_1 = info_1[0]
-    m_1 = info_1[1]
+    """
+    Numerically reconstructs the electric field component Es based on provided information.
 
-    E_r1 = info_1[3]
-    E_r2 = info_2[3]
+    Parameters:
+    - info_1 (list): Contains data such as coefficients, electric field values, and other parameters.
+    - info_2 (list): Similar to info_1, containing additional data required for reconstruction.
 
+    Returns:
+    - np.ndarray: A 2x1 complex array representing the reconstructed Es vector.
+    """
+
+    # Extract relevant values from input data
+    b_1 = info_1[0]  # First parameter from info_1 (potentially a squared amplitude term)
+    m_1 = info_1[1]  # Second parameter from info_1 (potentially a scaling factor)
+    
+    E_r1 = info_1[3]  # Electric field values from info_1
+    E_r2 = info_2[3]  # Electric field values from info_2
+
+    # Calculate Esx and Esy based on extracted parameters
     Esx = np.abs(m_1 / np.abs(E_r1[0, 0]))
     Esy = np.abs(np.sqrt(b_1 - Esx**2 - E_r1[0, 0]**2))
 
+    # Extract reference electric field components from info_2
     Erx = np.abs(E_r2[0, 0])
     Ery = np.abs(E_r2[1, 0])
-    vartheta_2 = info_2[2]
+    vartheta_2 = info_2[2]  # Phase-related parameter from info_2
 
-    # Definir las variables simbólicas
+    # Define symbolic variable for phase difference
     delta_phi_s = sp.Symbol('delta_phi_s', real=True)
 
-    # Expresión para tan(vartheta_2)
-    tan_vartheta_2_expr = (-Ery * Esy * sp.sin(-delta_phi_s)) / (Erx * Esx + Ery * Esy * sp.cos(-delta_phi_s))
+    # Expression for tan(vartheta_2) as a function of delta_phi_s
+    tan_vartheta_2_expr = (-Ery * Esy * sp.sin(-delta_phi_s)) / (
+        Erx * Esx + Ery * Esy * sp.cos(-delta_phi_s)
+    )
 
-    # Ecuación a resolver
+    # Define the equation to solve
     equation = sp.tan(vartheta_2) - tan_vartheta_2_expr
 
-    # Resolver la ecuación
+    # Solve the equation for delta_phi_s
     solution = sp.solve(equation, delta_phi_s)[0]
 
-    # Convertir la solución simbólica a una expresión numérica
+    # Convert the symbolic solution to a numerical value
     solution_numeric = float(solution.evalf())
+    
+    # Handle edge case where the solution is very close to zero
     solution_numeric = np.pi if np.isclose(solution_numeric, 0, atol=1e-6) else solution_numeric
 
-    # Calcular Es_calculated
-    Es_calculated = np.array([[Esx], [Esy * (np.cos(solution_numeric) + 1j*np.sin(solution_numeric))]])
+    # Compute the reconstructed Es vector
+    Es_calculated = np.array([
+        [Esx],
+        [Esy * (np.cos(solution_numeric) + 1j * np.sin(solution_numeric))]
+    ])
+
+    # Clean up numerical artifacts (remove near-zero values)
     Es_calculated.real[np.abs(Es_calculated.real) < 1e-6] = 0
     Es_calculated.imag[np.abs(Es_calculated.imag) < 1e-6] = 0
 
@@ -255,9 +283,6 @@ def PSG(alpha_1, alpha_2):
     # Return the resulting matrix for the combined PSG system
     # The QWP follows the HWP in the optical path, so the matrices are multiplied in this order
     return QWP @ HWP
-
-import numpy as np
-from scipy.optimize import minimize
 
 def PSG_calculator(In, Out, p=False):
     """
@@ -353,7 +378,10 @@ def field_notation(E, p=False):
 
     # Compute the relative phase difference (delta_phi)
     #delta_phi = np.round(phi_y - phi_x, 5)
-    delta_phi = phi_y - phi_x
+    if E_x < 1e-6 or E_y < 1e-6:
+        delta_phi = 0
+    else:
+        delta_phi = phi_y - phi_x
 
     # Print values if 'p' is True
     if p:
@@ -581,42 +609,40 @@ def sample_intensity(Er, E_is, sample, X_meters, Y_meters, franjas=40, lambda_=5
 
     return I,info, A, B
 
-from scipy.fft import fft, fftfreq
-from scipy.interpolate import interp1d
-
-def calcular_desfase(I1, I2, X):
-    # Centrado de las señales (restar la media)
+def calculate_phase_shift(I1, I2, X):
+    # Center the signals by subtracting the mean
     I1_centered = I1 - np.mean(I1)
     I2_centered = I2 - np.mean(I2)
     
-    # Interpolación para mejorar la resolución
+    # Interpolation to improve resolution
     x_interpolated = np.linspace(X.min(), X.max(), 10 * len(X))
     interp_I1 = interp1d(X, I1_centered, kind='cubic')
     interp_I2 = interp1d(X, I2_centered, kind='cubic')
 
-    # Señales interpoladas
+    # Generate interpolated signals
     I1_interp = interp_I1(x_interpolated)
     I2_interp = interp_I2(x_interpolated)
 
-    # FFT para cada señal interpolada
+    # Perform FFT on each interpolated signal
     fft_I1 = fft(I1_interp)
     fft_I2 = fft(I2_interp)
 
-    # Determinar la frecuencia dominante
+    # Identify the dominant frequency
     frequencies = fftfreq(len(x_interpolated), x_interpolated[1] - x_interpolated[0])
-    dominant_freq_index = np.argmax(np.abs(fft_I1))
+    dominant_freq_index = np.argmax(np.abs(fft_I1))  # Index of the peak in FFT
 
-    # Fases en la frecuencia dominante
+    # Extract phase at the dominant frequency
     phase_I1 = np.angle(fft_I1[dominant_freq_index])
     phase_I2 = np.angle(fft_I2[dominant_freq_index])
 
-    # Desfase calculado (en radianes)
+    # Compute the phase shift (in radians)
     delta_phi = phase_I2 - phase_I1
 
-    # Conversión del desfase a distancia (en metros)
-    #wavelength = 1 / frequencies[dominant_freq_index]  # Longitud de onda
+    # Conversion of phase shift to distance (in meters)
+    # Wavelength is defined as 532 nm (green laser typical value)
     wavelength = 532e-9
-    delta_x = delta_phi / (2 * np.pi) * wavelength     # Desfase convertido a metros
+    delta_x = delta_phi / (2 * np.pi) * wavelength     # Phase shift converted to meters
     
-    #return delta_x
+    # Return the calculated phase shift (uncomment delta_x if distance is preferred)
+    # return delta_x
     return delta_phi
