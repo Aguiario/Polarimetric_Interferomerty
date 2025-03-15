@@ -128,7 +128,7 @@ def numeric_intensity(E_r, E_s, mu=0, x_size = 1000, y_size = 500, n=1, plot=Fal
     I = b + m * cos_term
 
     # Information array for reference
-    info = [b, m, vartheta, theta, cos_term]
+    info = [b, m, vartheta, E_r,theta, cos_term]
 
     # Optional plotting of the interferogram
     if plot:
@@ -149,6 +149,45 @@ def numeric_intensity(E_r, E_s, mu=0, x_size = 1000, y_size = 500, n=1, plot=Fal
         plt.show()
 
     return info
+
+def Es_numeric_recosntruction(info_1, info_2):
+    # Variables proporcionadas
+    b_1 = info_1[0]
+    m_1 = info_1[1]
+
+    E_r1 = info_1[3]
+    E_r2 = info_2[3]
+
+    Esx = np.abs(m_1 / np.abs(E_r1[0, 0]))
+    Esy = np.abs(np.sqrt(b_1 - Esx**2 - E_r1[0, 0]**2))
+
+    Erx = np.abs(E_r2[0, 0])
+    Ery = np.abs(E_r2[1, 0])
+    vartheta_2 = info_2[2]
+
+    # Definir las variables simbólicas
+    delta_phi_s = sp.Symbol('delta_phi_s', real=True)
+
+    # Expresión para tan(vartheta_2)
+    tan_vartheta_2_expr = (-Ery * Esy * sp.sin(-delta_phi_s)) / (Erx * Esx + Ery * Esy * sp.cos(-delta_phi_s))
+
+    # Ecuación a resolver
+    equation = sp.tan(vartheta_2) - tan_vartheta_2_expr
+
+    # Resolver la ecuación
+    solution = sp.solve(equation, delta_phi_s)[0]
+
+    # Convertir la solución simbólica a una expresión numérica
+    solution_numeric = float(solution.evalf())
+    solution_numeric = np.pi if np.isclose(solution_numeric, 0, atol=1e-6) else solution_numeric
+
+    # Calcular Es_calculated
+    Es_calculated = np.array([[Esx], [Esy * (np.cos(solution_numeric) + 1j*np.sin(solution_numeric))]])
+    Es_calculated.real[np.abs(Es_calculated.real) < 1e-6] = 0
+    Es_calculated.imag[np.abs(Es_calculated.imag) < 1e-6] = 0
+
+    return Es_calculated
+
 
 def jones_matrix(delta, alpha):
     """
@@ -305,32 +344,30 @@ def field_notation(E, p=False):
     """
 
     # Extract the amplitude (magnitude) and phase of the x-component
-    E_x = np.round(np.abs(E[0, 0]), 5)    # Magnitude of E_x
-    phi_x = np.round(np.angle(E[0, 0]), 5) # Phase of E_x
+    E_x = np.abs(E[0, 0])    # Magnitude of E_x
+    phi_x = np.angle(E[0, 0]) # Phase of E_x
 
     # Extract the amplitude (magnitude) and phase of the y-component
-    E_y = np.round(np.abs(E[1, 0]), 5)    # Magnitude of E_y
-    phi_y = np.round(np.angle(E[1, 0]), 5) # Phase of E_y
+    E_y = np.abs(E[1, 0])    # Magnitude of E_y
+    phi_y = np.angle(E[1, 0]) # Phase of E_y
 
     # Compute the relative phase difference (delta_phi)
     #delta_phi = np.round(phi_y - phi_x, 5)
-    delta_phi = np.round(phi_y - phi_x, 5)
-
-    # If the x-component is zero, set delta_phi to zero (prevents undefined phase difference)
-    if E_x == 0 or E_y == 0:
-        delta_phi = 0
+    delta_phi = phi_y - phi_x
 
     # Print values if 'p' is True
     if p:
-        print(E_x)                        # Prints x-component amplitude
-        print(E_y)                        # Prints y-component amplitude
+        print(np.round(E_x, 5))                        # Prints x-component amplitude
+        print(np.round(E_y, 5))                        # Prints y-component amplitude
         print(f"{np.round(delta_phi / np.pi, 5)}π")    # Prints phase difference in terms of π
         print()                           # Prints newline for readability
-
     # Return the field notation in the desired format
-    return np.array([[E_x], [E_y * np.exp(1j * delta_phi)]])
+    #E_ = np.array([[E_x], [E_y * np.exp(1j*delta_phi)]])
+    E_ = np.array([[E_x], [E_y * (np.cos(delta_phi) + 1j*np.sin(delta_phi))]])
+    E_.real[np.abs(E_.real) < 1e-3] = 0
+    E_.imag[np.abs(E_.imag) < 1e-3] = 0
 
-import numpy as np
+    return E_
 
 def polarization_basis_set(polarization):
     """
