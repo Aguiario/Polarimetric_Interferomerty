@@ -647,7 +647,7 @@ def calculate_phase_shift(I1, I2, X):
     # return delta_x
     return delta_phi
 
-def birefringence_by_minimization(E_in, E_out):
+def birefringence_by_minimization(E_in, E_out, p = False):
     """
     Calculates the optimal birefringence parameters (delta_chi and alpha)
     that minimize the difference between a known output electric field (E_out)
@@ -676,8 +676,9 @@ def birefringence_by_minimization(E_in, E_out):
     # Extract optimal parameters
     optimal_delta_chi, optimal_alpha = result.x
 
-    # Display results in terms of π for clarity
-    print(f"χ: {optimal_delta_chi/np.pi:.4f}π")
-    print(f"α: {optimal_alpha/np.pi:.4f}π")
+    if p:
+        
+        print(f"χ: {optimal_delta_chi/np.pi:.4f}π")
+        print(f"α: {optimal_alpha/np.pi:.4f}π")
 
     return optimal_delta_chi, optimal_alpha
