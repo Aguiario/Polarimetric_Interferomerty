@@ -6,9 +6,8 @@ import numpy as np
 from scipy.optimize import minimize
 from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
-
-
-
+import os
+import imageio
 
 def symbolic_intensity(values=None):
     """
@@ -142,6 +141,14 @@ def numeric_intensity(E_r, E_s, mu=0, x_size = 1000, y_size = 500, n=1, plot=Fal
 
         # Apply Gaussian blur to smooth the fringe pattern
         I_blurred = cv2.GaussianBlur(I_norm, (5, 5), 0)
+
+        os.makedirs("interferogram", exist_ok=True)
+
+        # Format the filename with two decimal precision
+        filename = f"int_{b:.2f}_{m:.2f}_{vartheta:.2f}.png"
+
+        # Save the image
+        imageio.imwrite(os.path.join("interferogram", filename), (I_blurred * 255).astype('uint8'))
 
         # Display the interferogram
         plt.figure(figsize=(8, 6))
