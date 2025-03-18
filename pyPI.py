@@ -8,6 +8,7 @@ from scipy.fft import fft, fftfreq
 from scipy.interpolate import interp1d
 import os
 import imageio
+from scipy.linalg import eig
 
 def symbolic_intensity(values=None):
     """
@@ -689,3 +690,53 @@ def birefringence_by_minimization(E_in, E_out, p = False):
         print(f"α: {optimal_alpha/np.pi:.4f}π")
 
     return optimal_delta_chi, optimal_alpha
+
+def determine_A(x_vectors, b_vectors, p=False):
+    """
+    Determines the matrix A such that A * x = b for given sets of x and b vectors.
+
+    This function computes the matrix A that minimizes the least-squares error 
+    in the system of equations using Kronecker products and vectorization.
+
+    Parameters:
+    - x_vectors (list of numpy arrays): List of 2x1 column vectors representing the 'x' values.
+    - b_vectors (list of numpy arrays): List of 2x1 column vectors representing the 'b' values.
+    - p (bool, optional): If True, prints the determined matrix A and the calculated alpha value.
+
+    Returns:
+    - A (numpy array): A 2x2 matrix that minimizes the least-squares error.
+    - alpha_calculated (float): The calculated alpha value corresponding to the dominant eigenvector's angle.
+
+    Raises:
+    - ValueError: If the number of 'x' vectors and 'b' vectors are not equal.
+    """
+
+    # Ensure both lists have the same number of vectors
+    if len(x_vectors) != len(b_vectors):
+        raise ValueError("The lists of vectors must have the same length.")
+
+    # Construct matrix M by stacking Kronecker products of identity matrix with transposed 'x' vectors
+    M = np.vstack([np.kron(np.eye(2), xi.T) for xi in x_vectors])
+
+    # Stack all 'b' vectors into a single column matrix
+    B = np.vstack(b_vectors)
+
+    # Solve the least-squares problem to determine the vectorized form of matrix A
+    A_vector, residuals, rank, s = np.linalg.lstsq(M, B, rcond=None)
+
+    # Reshape the resulting vector into a 2x2 matrix
+    A = A_vector.reshape(2, 2)
+
+    # Eigenvalue and eigenvector calculation (Principal Component Analysis)
+    eigenvalues, eigenvectors = eig(A)
+
+    # Determine alpha (angle) from the dominant eigenvector
+    alpha_calculated = np.arctan2(np.real(eigenvectors[1, 0]), np.real(eigenvectors[0, 0]))
+
+    if p:
+        # Display results if 'p' is True
+        print("Determined matrix A:")
+        print(A, "\n")
+        print(f"α (dominant direction): {alpha_calculated / np.pi:.4f}π\n")
+
+    return A, alpha_calculated
