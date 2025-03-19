@@ -731,7 +731,7 @@ def determine_A(x_vectors, b_vectors, p=False):
     eigenvalues, eigenvectors = eig(A)
 
     # Determine alpha (angle) from the dominant eigenvector
-    alpha_calculated = np.arctan2(np.real(eigenvectors[1, 0]), np.real(eigenvectors[0, 0]))
+    alpha_calculated = np.abs(np.arctan2(np.real(eigenvectors[1, 0]), np.real(eigenvectors[0, 0])))
 
     if p:
         # Display results if 'p' is True
@@ -740,3 +740,63 @@ def determine_A(x_vectors, b_vectors, p=False):
         print(f"α (dominant direction): {alpha_calculated / np.pi:.4f}π\n")
 
     return A, alpha_calculated
+
+import sympy as sp
+import numpy as np
+from scipy.optimize import minimize
+
+def calculate_chi(alpha, E_is, E_s, p=False):
+    """
+    Calculates the phase shift parameter (chi) for a birefringent optical system using minimization.
+    
+    Parameters:
+    - alpha (float): The orientation angle of the birefringent material's fast axis (in radians).
+    - E_is (array): The input Jones vector representing the initial polarization state.
+    - E_s (array): The output Jones vector representing the modified polarization state.
+    - p (bool): If True, prints the calculated phase shift in terms of π.
+
+    Returns:
+    - float: The calculated phase shift (chi) in radians if a solution is found.
+    - str: A message indicating no solution was found if calculations are inconsistent.
+    """
+
+    # Extract magnitudes and phases of the input Jones vector (E_is)
+    A_isx, A_isy = sp.Abs(E_is[0, 0]), sp.Abs(E_is[1, 0])  # Magnitudes
+    delta_phi_is = sp.arg(E_is[1, 0])                        # Phase of the second component
+
+    # Extract magnitudes and phases of the output Jones vector (E_s)
+    A_sx, phi_sx = sp.Abs(E_s[0, 0]), sp.arg(E_s[0, 0])    # Magnitude and phase of Ex (output)
+    A_sy, phi_sy = sp.Abs(E_s[1, 0]), sp.arg(E_s[1, 0])    # Magnitude and phase of Ey (output)
+
+    # Convert symbolic expressions to numerical functions using lambdify
+    A_isx_func = sp.lambdify((), A_isx, 'numpy')
+    A_isy_func = sp.lambdify((), A_isy, 'numpy')
+    delta_phi_is_func = sp.lambdify((), delta_phi_is, 'numpy')
+    A_sx_func = sp.lambdify((), A_sx, 'numpy')
+    phi_sx_func = sp.lambdify((), phi_sx, 'numpy')
+    A_sy_func = sp.lambdify((), A_sy, 'numpy')
+    phi_sy_func = sp.lambdify((), phi_sy, 'numpy')
+
+    def error_function(chi):
+        term1 = np.abs(A_sx_func() * np.exp(1j * phi_sx_func()) -
+                       ((np.cos(alpha)**2 + np.exp(-1j * chi) * np.sin(alpha)**2) * A_isx_func() +
+                        ((1 - np.exp(-1j * chi)) * np.cos(alpha) * np.sin(alpha)) * A_isy_func() * np.exp(1j * delta_phi_is_func())))
+
+        term2 = np.abs(A_sy_func() * np.exp(1j * phi_sy_func()) -
+                       (((1 - np.exp(-1j * chi)) * np.cos(alpha) * np.sin(alpha)) * A_isx_func() +
+                        (np.sin(alpha)**2 + np.exp(-1j * chi) * np.cos(alpha)**2) * A_isy_func() * np.exp(1j * delta_phi_is_func())))
+
+        return np.abs(term1) + np.abs(term2)
+
+    # Minimize the error function with improved settings
+    result = minimize(error_function, x0=np.pi/2, bounds=[(0, 2 * np.pi)], tol=1e-6)
+
+    if result.success:
+        chi_calculated = result.x[0]
+        if p:
+            print(f"Calculated value of Δχ: {chi_calculated / np.pi:.4f}π")
+        return chi_calculated
+    else:
+        return np.pi/2
+
+
