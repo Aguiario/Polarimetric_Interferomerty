@@ -163,7 +163,6 @@ def numeric_intensity(E_r, E_s, mu=0, x_size = 1000, y_size = 500, n=1, plot=Fal
 
     return info
 
-
 def Es_numeric_recosntruction(info_1, info_2):
     """
     Numerically reconstructs the electric field component Es based on provided information.
@@ -223,7 +222,6 @@ def Es_numeric_recosntruction(info_1, info_2):
     Es_calculated.imag[np.abs(Es_calculated.imag) < 1e-6] = 0
 
     return Es_calculated
-
 
 def jones_matrix(delta, alpha):
     """
@@ -345,61 +343,65 @@ def PSG_calculator(In, Out, p=False):
 
     # Optionally print the calculated angles in terms of π for improved clarity
     if p:
-        print(f"HWP: alpha_1 = {alpha_1/ np.pi:.4f}π")
-        print(f"QWP: alpha_2 = {alpha_2/ np.pi:.4f}π")
+        print(f"HWP: {alpha_1/ np.pi:.4f}π")
+        print(f"QWP: {alpha_2/ np.pi:.4f}π")
     
     # Return the calculated angles in units of π
     return alpha_1, alpha_2
 
+# Dictionary containing Jones vectors for common polarization states
+bases = {
+    'H': np.array([[1 + 0j], [0 + 0j]]),            # Horizontal polarization
+    'V': np.array([[0 + 0j], [1 + 0j]]),            # Vertical polarization
+    'P45': 1/np.sqrt(2) * np.array([[1+0.j], [1+0j]]),      # +45° Linear polarization
+    'N45': 1/np.sqrt(2) * np.array([[1+0j], [-1+0j]]),     # -45° Linear polarization
+    'L': 1/np.sqrt(2) * np.array([[1+0j], [0 + 1j]]),       # Left circular polarization
+    'R': 1/np.sqrt(2) * np.array([[1+0j], [0 -1j]])       # Right circular polarization
+}
 
 def field_notation(E, p=False):
     """
-    Converts an electric field vector into field notation, extracting amplitude 
-    and phase information for both polarization components.
-
+    Converts an electric field vector into field notation by extracting the amplitude 
+    and phase difference for both polarization components. Also identifies the polarization type.
+    
     Parameters:
-    - E : np.ndarray
-        A 2x1 complex-valued array representing the electric field vector.
-        E[0, 0] corresponds to the x-polarization component.
-        E[1, 0] corresponds to the y-polarization component.
-
-    - p : bool, optional (default = False)
-        If True, prints the amplitude of both components and the relative phase
-        difference in terms of π.
+    - E (np.array): A 2x1 complex-valued array representing the electric field vector.
+    - p (bool): If True, prints the identified polarization type. Default is False.
 
     Returns:
-    - np.ndarray
-        A 2x1 complex-valued array in field notation form:
-        [[E_x], [E_y * exp(i * delta_phi)]]
-        Where:
-        - E_x and E_y are the magnitudes (amplitudes) of the field components.
-        - delta_phi is the phase difference between the y and x components.
+    - np.array: The electric field vector in its original notation (without normalization).
     """
 
-    # Extract the amplitude (magnitude) and phase of the x-component
-    E_x = np.abs(E[0, 0])    # Magnitude of E_x
+    # Function to identify the polarization type
+    def identify_polarization(E_norm):
+        for label, base in bases.items():
+            if np.allclose(E_norm, base, atol=1e-6):  # Tolerance for numerical precision
+                return label
+        return "Elliptical polarization"
+
+    # Extract amplitude (magnitude) and phase for the x-component
+    E_x = np.abs(E[0, 0])     # Amplitude of E_x
     phi_x = np.angle(E[0, 0]) # Phase of E_x
 
-    # Extract the amplitude (magnitude) and phase of the y-component
-    E_y = np.abs(E[1, 0])    # Magnitude of E_y
+    # Extract amplitude (magnitude) and phase for the y-component
+    E_y = np.abs(E[1, 0])     # Amplitude of E_y
     phi_y = np.angle(E[1, 0]) # Phase of E_y
 
-    # Compute the relative phase difference (delta_phi)
-    #delta_phi = np.round(phi_y - phi_x, 5)
-    if E_x < 1e-6 or E_y < 1e-6:
+    # Determine the phase difference
+    if E_x < 1e-6 or E_y < 1e-6:  # Handle near-zero amplitudes to avoid errors
         delta_phi = 0
     else:
         delta_phi = phi_y - phi_x
 
-    # Print values if 'p' is True
+    # Return the vector in its original notation (without normalization)
+    E_ = np.array([[E_x + 0.j], [E_y * (np.cos(delta_phi) + 1j * np.sin(delta_phi))]])
+
+    # Display the polarization type if 'p' is True
     if p:
-        print(np.round(E_x, 5))                        # Prints x-component amplitude
-        print(np.round(E_y, 5))                        # Prints y-component amplitude
-        print(f"{np.round(delta_phi / np.pi, 5)}π")    # Prints phase difference in terms of π
-        print()                           # Prints newline for readability
-    # Return the field notation in the desired format
-    #E_ = np.array([[E_x], [E_y * np.exp(1j*delta_phi)]])
-    E_ = np.array([[E_x], [E_y * (np.cos(delta_phi) + 1j*np.sin(delta_phi))]])
+        polarization_type = identify_polarization(E_/np.linalg.norm(E_))
+        print(f"Polarization type: {polarization_type}")
+    
+    # Eliminate small numerical noise in the real and imaginary parts
     E_.real[np.abs(E_.real) < 1e-3] = 0
     E_.imag[np.abs(E_.imag) < 1e-3] = 0
 
@@ -407,54 +409,40 @@ def field_notation(E, p=False):
 
 def polarization_basis_set(polarization):
     """
-    Devuelve el vector de Jones correspondiente a un estado de polarización específico,
-    utilizando una base estándar de estados de polarización.
+    Returns the Jones vector corresponding to a specific polarization state,
+    using a standard basis of polarization states.
 
-    Parámetros:
+    Parameters:
     -----------
     polarization : str
-        Estado de polarización deseado. Las opciones disponibles son:
-        - 'H'   : Polarización horizontal | [1, 0]ᵀ
-        - 'V'   : Polarización vertical   | [0, 1]ᵀ
-        - 'P45' : Polarización a +45°     | (1/√2) [1, 1]ᵀ
-        - 'N45' : Polarización a -45°     | (1/√2) [1, -1]ᵀ
-        - 'L'   : Polarización circular izquierda | (1/√2) [1, i]ᵀ
-        - 'R'   : Polarización circular derecha    | (1/√2) [1, -i]ᵀ
+        Desired polarization state. Available options are:
+        - 'H'   : Horizontal polarization        | [1, 0]ᵀ
+        - 'V'   : Vertical polarization          | [0, 1]ᵀ
+        - 'P45' : +45° linear polarization       | (1/√2) [1, 1]ᵀ
+        - 'N45' : -45° linear polarization       | (1/√2) [1, -1]ᵀ
+        - 'L'   : Left circular polarization     | (1/√2) [1, i]ᵀ
+        - 'R'   : Right circular polarization    | (1/√2) [1, -i]ᵀ
 
-    Retorna:
+    Returns:
     --------
     ndarray
-        Vector de Jones que representa el estado de polarización deseado en la notación de campo eléctrico.
+        Jones vector representing the desired polarization state in electric field notation.
 
-    Excepciones:
-    ------------
+    Exceptions:
+    -----------
     ValueError
-        Se genera si el parámetro `polarization` no coincide con uno de los estados válidos.
+        Raised if the `polarization` parameter does not match one of the valid states.
     """
 
-    # Diccionario con los vectores de Jones para cada estado de polarización
-    bases = {
-        'H': np.array([[1], [0]]),            # Horizontal
-        'V': np.array([[0], [1]]),            # Vertical
-        'P45': 1/np.sqrt(2) * np.array([[1], [1]]),      # +45° Lineal
-        'N45': 1/np.sqrt(2) * np.array([[1], [-1]]),     # -45° Lineal
-        'L': 1/np.sqrt(2) * np.array([[1], [1j]]),       # Circular izquierda
-        'R': 1/np.sqrt(2) * np.array([[1], [-1j]])       # Circular derecha
-    }
-
-    # Obtener el vector de Jones correspondiente al estado solicitado
+    # Retrieve the corresponding Jones vector for the requested polarization state
     E = bases.get(polarization)
     
-    # Manejo de errores si el estado de polarización no es válido
+    # Error handling for invalid polarization states
     if E is None:
         raise ValueError(f"Error: Polarization state '{polarization}' not recognized.")
     
-    # Retornar el vector en notación de campo eléctrico
+    # Return the Jones vector in electric field notation
     return E
-
-import numpy as np
-import cv2
-import matplotlib.pyplot as plt
 
 def initialize_environment(lambda_=532e-9, x_size=1000, y_size=500):
     """
@@ -579,7 +567,7 @@ def sample_intensity(Er, E_is, sample, X_meters, Y_meters, franjas=40, lambda_=5
         for j in range(sample.shape[1]):
             E_s[i, j] = sample[i, j] @ E_is[i, j]  # Applying Jones transformation
     A = E_r
-    B= E_s
+    B = E_s
 
     # Flatten Jones vectors for easier calculations
     E_r = np.stack([[elem.flatten() for elem in row] for row in E_r])
@@ -616,44 +604,6 @@ def sample_intensity(Er, E_is, sample, X_meters, Y_meters, franjas=40, lambda_=5
     plt.show()
 
     return I,info, A, B
-
-def calculate_phase_shift(I1, I2, X):
-    # Center the signals by subtracting the mean
-    I1_centered = I1 - np.mean(I1)
-    I2_centered = I2 - np.mean(I2)
-    
-    # Interpolation to improve resolution
-    x_interpolated = np.linspace(X.min(), X.max(), 10 * len(X))
-    interp_I1 = interp1d(X, I1_centered, kind='cubic')
-    interp_I2 = interp1d(X, I2_centered, kind='cubic')
-
-    # Generate interpolated signals
-    I1_interp = interp_I1(x_interpolated)
-    I2_interp = interp_I2(x_interpolated)
-
-    # Perform FFT on each interpolated signal
-    fft_I1 = fft(I1_interp)
-    fft_I2 = fft(I2_interp)
-
-    # Identify the dominant frequency
-    frequencies = fftfreq(len(x_interpolated), x_interpolated[1] - x_interpolated[0])
-    dominant_freq_index = np.argmax(np.abs(fft_I1))  # Index of the peak in FFT
-
-    # Extract phase at the dominant frequency
-    phase_I1 = np.angle(fft_I1[dominant_freq_index])
-    phase_I2 = np.angle(fft_I2[dominant_freq_index])
-
-    # Compute the phase shift (in radians)
-    delta_phi = phase_I2 - phase_I1
-
-    # Conversion of phase shift to distance (in meters)
-    # Wavelength is defined as 532 nm (green laser typical value)
-    wavelength = 532e-9
-    delta_x = delta_phi / (2 * np.pi) * wavelength     # Phase shift converted to meters
-    
-    # Return the calculated phase shift (uncomment delta_x if distance is preferred)
-    # return delta_x
-    return delta_phi
 
 def birefringence_by_minimization(E_in, E_out, p = False):
     """
@@ -741,10 +691,6 @@ def determine_A(x_vectors, b_vectors, p=False):
 
     return A, alpha_calculated
 
-import sympy as sp
-import numpy as np
-from scipy.optimize import minimize
-
 def calculate_chi(alpha, E_is, E_s, p=False):
     """
     Calculates the phase shift parameter (chi) for a birefringent optical system using minimization.
@@ -799,4 +745,41 @@ def calculate_chi(alpha, E_is, E_s, p=False):
     else:
         return np.pi/2
 
+def calculate_phase_shift(I1, I2, X):
+    # Center the signals by subtracting the mean
+    I1_centered = I1 - np.mean(I1)
+    I2_centered = I2 - np.mean(I2)
+    
+    # Interpolation to improve resolution
+    x_interpolated = np.linspace(X.min(), X.max(), 10 * len(X))
+    interp_I1 = interp1d(X, I1_centered, kind='cubic')
+    interp_I2 = interp1d(X, I2_centered, kind='cubic')
+
+    # Generate interpolated signals
+    I1_interp = interp_I1(x_interpolated)
+    I2_interp = interp_I2(x_interpolated)
+
+    # Perform FFT on each interpolated signal
+    fft_I1 = fft(I1_interp)
+    fft_I2 = fft(I2_interp)
+
+    # Identify the dominant frequency
+    frequencies = fftfreq(len(x_interpolated), x_interpolated[1] - x_interpolated[0])
+    dominant_freq_index = np.argmax(np.abs(fft_I1))  # Index of the peak in FFT
+
+    # Extract phase at the dominant frequency
+    phase_I1 = np.angle(fft_I1[dominant_freq_index])
+    phase_I2 = np.angle(fft_I2[dominant_freq_index])
+
+    # Compute the phase shift (in radians)
+    delta_phi = phase_I2 - phase_I1
+
+    # Conversion of phase shift to distance (in meters)
+    # Wavelength is defined as 532 nm (green laser typical value)
+    wavelength = 532e-9
+    delta_x = delta_phi / (2 * np.pi) * wavelength     # Phase shift converted to meters
+    
+    # Return the calculated phase shift (uncomment delta_x if distance is preferred)
+    # return delta_x
+    return delta_phi
 
